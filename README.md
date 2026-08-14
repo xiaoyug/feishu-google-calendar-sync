@@ -44,11 +44,34 @@ cd feishu-google-calendar-sync && python3 setup.py
 - **任何一侧读取失败，本轮立即中止**——绝不会因为读不到数据就误删对面的镜像
 - 你已拒绝（declined）的邀请不同步
 
-## 隐私
+## 安全须知（重要）
 
-- 授权凭证只存在你自己电脑的 `~/.config/calendar-sync/`（权限 600），不上传任何第三方服务器
-- 数据只在你的飞书账号和你的 Google 账号之间流动，没有中间服务
-- **同事看得到你的日程标题吗？** 取决于你飞书主日历的权限设置。飞书默认是「仅显示忙闲」，同事只看到你忙，看不到标题。想确认：飞书日历 → 我的日历 → 权限设置
+这个工具会拿到你日历的读写权限，用之前请花一分钟看完这节。
+
+**凭证只在你自己电脑上。** 全部存放于 `~/.config/calendar-sync/`，权限 600，不经过任何第三方服务器。作者也看不到——这个仓库里没有任何凭证，你的授权是你自己在 Google 和飞书那边完成的。
+
+**数据只在你的两个账号之间流动**，没有中间服务器。
+
+**同事会看到你的日程标题吗？** 取决于你飞书主日历的权限设置。飞书默认「仅显示忙闲」，同事只看到你忙、看不到标题。想确认：飞书日历 → 我的日历 → 权限设置。
+
+**两个文件绝对不要外发：**
+
+| 文件 | 为什么危险 |
+|------|-----------|
+| `~/.config/calendar-sync/` 下的 `*token*.json` / `*client_secret*.json` | 等同于你日历的钥匙 |
+| `~/.config/calendar-sync/sync.log` | 逐条记录了你的**会议标题** |
+
+**求助时贴这个，不要贴日志：**
+
+```bash
+python3 sync.py --doctor
+```
+
+它会输出一份诊断报告，把会议标题、日程 ID、私密地址全部替换成占位符，可以安全地贴给同事、AI 助手或 GitHub issue。
+
+**用 AI 助手（Codex / Claude Code）辅助安装？** 仓库里的 [AGENTS.md](AGENTS.md) 会被它们自动读取，里面写好了红线：不许读凭证文件、不许读原始日志、不许代做 OAuth。但请注意，**安装向导需要扫码和浏览器授权，最好由你自己在真实终端里跑** `python3 setup.py`，让 AI 在旁边答疑就好。
+
+**建议加一道保险**：给 Google 授权时用的是你自己 GCP 项目里的「测试应用」，随时可以在 <https://myaccount.google.com/permissions> 一键撤销；飞书侧撤销用 `lark-cli auth logout`。
 
 ## 日常使用
 
@@ -61,6 +84,7 @@ tail -f ~/.config/calendar-sync/sync.log
 | 看同步日志 | `tail -f ~/.config/calendar-sync/sync.log` |
 | 手动跑一次 | `python3 sync.py` |
 | 只看计划不改数据 | `python3 sync.py --dry-run` |
+| 生成脱敏诊断报告 | `python3 sync.py --doctor` |
 | 改同步频率为 5 分钟 | `./install.sh 5` |
 | 改同步时间范围 | 编辑 `~/.config/calendar-sync/config.json` 的 `window_future_days`（默认 60 天） |
 | 停用 | `./uninstall.sh` |

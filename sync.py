@@ -10,6 +10,7 @@
 用法：
   python3 sync.py            # 执行一次同步
   python3 sync.py --dry-run  # 只打印将要做什么，不动任何数据
+  python3 sync.py --doctor   # 生成脱敏诊断报告（求助时贴这个，不要贴原始日志）
 
 首次使用请先运行 python3 setup.py（交互式安装向导）。
 """
@@ -57,8 +58,11 @@ def log(msg):
     print(line)
     try:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
+        existed = LOG_PATH.exists()
         with open(LOG_PATH, "a") as f:
             f.write(line + "\n")
+        if not existed:
+            os.chmod(LOG_PATH, 0o600)  # 日志含会议标题，不给同机其他用户读
     except OSError:
         pass
 
@@ -746,8 +750,67 @@ def sync_google_to_feishu(g_real, fs_mirrors, fcal_id, dup_mirrors=None):
     return created, updated, deleted
 
 
+# ===================== --doctor：可安全分享的诊断报告 =====================
+
+TITLE_LINE_RE = re.compile(r"^(.*?(?:创建镜像|更新镜像)：).*$")
+
+
+def _redact(line):
+    """把日志里的会议标题、ID、私密地址抹掉，只留结构信息"""
+    line = TITLE_LINE_RE.sub(r"\1<标题已隐去>", line)
+    line = re.sub(r"(id=)\S+", r"\1<已隐去>", line)
+    line = re.sub(r"https?://\S+", "<地址已隐去>", line)
+    line = re.sub(r"[0-9a-fA-F-]{20,}", "<ID已隐去>", line)
+    return line
+
+
+def doctor():
+    """打印排障信息。刻意不含任何会议标题、日程 ID、私密地址、令牌。
+    这份输出可以安全地贴给同事、AI 助手或 GitHub issue。"""
+    import platform
+
+    print("===== calendar-sync 诊断报告（已脱敏，可安全外发）=====")
+    print(f"系统       : {platform.system()} {platform.release()}")
+    print(f"Python     : {sys.version.split()[0]}")
+    print(f"lark-cli   : {LARK_BIN if Path(LARK_BIN).exists() or shutil.which('lark-cli') else '未找到'}")
+
+    print("\n--- 凭证文件（只报告存在与否，绝不打印内容）---")
+    for label, path in (("Google 客户端凭证", GOOGLE_CLIENT_SECRET_PATH),
+                        ("Google 令牌", GOOGLE_TOKENS_PATH),
+                        ("配置", CONFIG_PATH)):
+        if path.exists():
+            print(f"  {label}: 存在，权限 {oct(path.stat().st_mode)[-3:]}")
+        else:
+            print(f"  {label}: 不存在")
+
+    cfg = load_config()
+    print("\n--- 配置（敏感项已隐去）---")
+    print(f"  同步窗口   : {cfg['window_past_days']} 天前 ～ {cfg['window_future_days']} 天后")
+    print(f"  飞书日历ID : {'已配置' if cfg.get('feishu_calendar_id') else '未配置'}")
+    print(f"  Google通道 : {'API（双向）' if GOOGLE_TOKENS_PATH.exists() else ('ICS（只读）' if cfg.get('google_ics_url') else '未配置')}")
+
+    print("\n--- 飞书授权 ---")
+    try:
+        r = subprocess.run([LARK_BIN, "auth", "status"], capture_output=True, text=True, timeout=60)
+        st = json.loads(r.stdout).get("identities", {}).get("user", {}).get("status", "unknown")
+        print(f"  用户身份: {st}")
+    except Exception as e:
+        print(f"  查询失败: {type(e).__name__}")
+
+    print("\n--- 最近 25 行日志（标题/ID/地址已隐去）---")
+    if LOG_PATH.exists():
+        for ln in LOG_PATH.read_text(errors="replace").strip().split("\n")[-25:]:
+            print("  " + _redact(ln))
+    else:
+        print("  （还没有日志）")
+    print("\n===== 报告结束 =====")
+
+
 def main():
     global DRY_RUN
+    if "--doctor" in sys.argv:
+        doctor()
+        return
     DRY_RUN = "--dry-run" in sys.argv
     cfg = load_config()
 
