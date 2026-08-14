@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# 凭证类文件绝不入库（正常情况下它们只在 ~/.config/calendar-sync/）
+*client_secret*.json
+*token*.json
+*.pem
+config.json
