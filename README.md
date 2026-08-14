@@ -22,7 +22,7 @@
 需要 macOS 或 Linux、Python 3.9+、Node.js。三条命令：
 
 ```bash
-git clone https://github.com/YOUR_NAME/feishu-google-calendar-sync.git
+git clone https://github.com/xiaoyug/feishu-google-calendar-sync.git
 ```
 
 ```bash
