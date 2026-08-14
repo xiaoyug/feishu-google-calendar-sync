@@ -67,6 +67,20 @@ def log(msg):
         pass
 
 
+
+def harden_perms():
+    """把运行时目录里的敏感文件收紧到 600。日志含会议标题，配置含私密地址。
+    每次启动都跑一遍，这样老用户升级后也能被修正。"""
+    for name in ("sync.log", "task.log", "launchd.log", "config.json",
+                 "google_tokens.json", "google_client_secret.json"):
+        f = CFG_DIR / name
+        try:
+            if f.exists() and (f.stat().st_mode & 0o077):
+                os.chmod(f, 0o600)
+        except OSError:
+            pass
+
+
 def load_config():
     CFG_DIR.mkdir(parents=True, exist_ok=True)
     cfg = dict(DEFAULT_CONFIG)
@@ -808,6 +822,8 @@ def doctor():
 
 def main():
     global DRY_RUN
+    CFG_DIR.mkdir(parents=True, exist_ok=True)
+    harden_perms()
     if "--doctor" in sys.argv:
         doctor()
         return
