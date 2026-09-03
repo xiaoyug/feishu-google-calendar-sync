@@ -81,6 +81,92 @@ def harden_perms():
             pass
 
 
+
+# ===================== 失败告警（别再静默死掉）=====================
+
+STATE_PATH = CFG_DIR / "state.json"
+ALERT_COOLDOWN_H = 6      # 同一个故障最多每 6 小时提醒一次，避免刷屏
+STALE_ALERT_H = 3         # 超过 3 小时没成功同步就算异常
+
+
+def _load_state():
+    try:
+        return json.loads(STATE_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_state(st):
+    try:
+        STATE_PATH.write_text(json.dumps(st, indent=2))
+        os.chmod(STATE_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def notify(title, message):
+    """弹一条系统通知。失败不影响主流程。"""
+    try:
+        if sys.platform == "darwin":
+            safe_t = title.replace('"', "'")
+            safe_m = message.replace('"', "'")
+            subprocess.run(
+                ["osascript", "-e",
+                 f'display notification "{safe_m}" with title "{safe_t}" sound name "Basso"'],
+                capture_output=True, timeout=15)
+        elif shutil.which("notify-send"):
+            subprocess.run(["notify-send", "-u", "critical", title, message],
+                           capture_output=True, timeout=15)
+    except Exception:
+        pass
+
+
+def alert_failure(err):
+    """同步失败时告警（带冷却，避免每 10 分钟弹一次）"""
+    st = _load_state()
+    now = int(time.time())
+    st["consecutive_failures"] = st.get("consecutive_failures", 0) + 1
+    last = st.get("last_alert_at", 0)
+
+    if now - last >= ALERT_COOLDOWN_H * 3600:
+        n = st["consecutive_failures"]
+        hint = ""
+        if "invalid_grant" in str(err):
+            hint = "Google 授权已失效，需重新授权"
+        elif "lark" in str(err).lower() or "飞书" in str(err):
+            hint = "飞书授权已失效，跑 lark-cli auth login"
+        last_ok = st.get("last_success_at")
+        ago = f"，已 {round((now - last_ok) / 3600, 1)} 小时未成功同步" if last_ok else ""
+        notify("⚠️ 日历同步已停止",
+               f"{hint or '同步失败'}（连续失败 {n} 次{ago}）。终端跑 python3 sync.py --doctor 查看")
+        st["last_alert_at"] = now
+    _save_state(st)
+
+
+def mark_success():
+    st = _load_state()
+    was_failing = st.get("consecutive_failures", 0) > 0
+    st["last_success_at"] = int(time.time())
+    st["consecutive_failures"] = 0
+    st["last_alert_at"] = 0
+    _save_state(st)
+    if was_failing:
+        notify("✅ 日历同步已恢复", "两边日历重新开始自动对齐")
+
+
+def check_stale():
+    """即使没报错，长时间没成功同步也要提醒（比如定时器被误停）"""
+    st = _load_state()
+    last_ok = st.get("last_success_at")
+    if not last_ok:
+        return
+    hours = (time.time() - last_ok) / 3600
+    if hours >= STALE_ALERT_H and time.time() - st.get("last_alert_at", 0) >= ALERT_COOLDOWN_H * 3600:
+        notify("⚠️ 日历同步可能已停", f"已 {round(hours, 1)} 小时没有成功同步过")
+        st["last_alert_at"] = int(time.time())
+        _save_state(st)
+
+
 def load_config():
     CFG_DIR.mkdir(parents=True, exist_ok=True)
     cfg = dict(DEFAULT_CONFIG)
@@ -797,6 +883,17 @@ def doctor():
         else:
             print(f"  {label}: 不存在")
 
+    st = _load_state()
+    print("\n--- 健康状态 ---")
+    if st.get("last_success_at"):
+        ago_h = (time.time() - st["last_success_at"]) / 3600
+        when = datetime.fromtimestamp(st["last_success_at"]).strftime("%Y-%m-%d %H:%M")
+        flag = "✅ 正常" if ago_h < 1 else ("⚠️  偏久" if ago_h < 24 else "❌ 已停止")
+        print(f"  最后成功同步: {when}（{round(ago_h,1)} 小时前）{flag}")
+    else:
+        print("  最后成功同步: 无记录")
+    print(f"  连续失败次数: {st.get('consecutive_failures', 0)}")
+
     cfg = load_config()
     print("\n--- 配置（敏感项已隐去）---")
     print(f"  同步窗口   : {cfg['window_past_days']} 天前 ～ {cfg['window_future_days']} 天后")
@@ -871,6 +968,8 @@ def main():
     c2, u2, d2 = sync_google_to_feishu(g_real, fs_mirrors, fcal_id, dup_mirrors=fs_dup_mirrors)
 
     log(f"完成：飞书→Google 建{c1}/改{u1}/删{d1}；Google→飞书 建{c2}/改{u2}/删{d2}")
+    if not DRY_RUN:
+        mark_success()
 
 
 if __name__ == "__main__":
@@ -878,4 +977,6 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         log(f"❌ 同步失败：{e}")
+        if "--dry-run" not in sys.argv and "--doctor" not in sys.argv:
+            alert_failure(e)
         sys.exit(1)

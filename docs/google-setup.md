@@ -2,7 +2,7 @@
 
 这是整个安装过程唯一有点绕的部分。**不花钱、不需要 Google 审核**，全程约 5 分钟。
 
-原理说明：Google 不允许第三方应用随便读写你的日历，你得在自己的 Google Cloud 里建一个「只有你自己能用」的应用，然后授权给它。这个应用永远处于 Testing 状态，只对你（和你手动添加的测试用户）开放，所以不需要提交审核。
+原理说明：Google 不允许第三方应用随便读写你的日历，你得在自己的 Google Cloud 里建一个「只有你自己能用」的应用，然后授权给它。这个应用不需要提交 Google 审核，但**必须把发布状态改成 Production**（见第 6.5 步）——否则授权满 7 天就会自动失效。
 
 前置条件：一个 Google 账号，且**已开启两步验证**（Google Cloud 从 2025 年起强制要求）。没开的话先去 <https://myaccount.google.com/security> 开一下。
 
@@ -79,6 +79,21 @@ mkdir -p ~/.config/calendar-sync
 
 ---
 
+## 第 6.5 步 · 把应用发布到 Production ⚠️⚠️ 最重要的一步
+
+**不做这步，同步会在整整 7 天后自动死掉，而且不会有任何提示。**
+
+Google 的硬性策略：发布状态为 **Testing** 的应用，签发的 refresh token **7 天后失效**。到期后同步会一直报 `invalid_grant`，两边日历各自漂移。
+
+做法：左侧 **Audience** 页面 → 顶部 Publishing status 下点 **PUBLISH APP** → 弹窗确认。
+
+- 如果按钮点不动，说明 **Branding 页面的 App name 是空的**——先去左侧 Branding 填上应用名（比如 `calendar-sync`）并 Save，再回来发布
+- 发布后状态变成 **In production**，refresh token 不再过期
+- **不需要提交 Google 审核**。审核只影响那个「未验证应用」的警告页，不影响功能。你自己用，看到警告点 Advanced 继续即可
+- 未验证的生产应用有 100 用户上限，个人使用完全够
+
+---
+
 ## 第 7 步 · 回到向导完成授权
 
 回到终端，重新运行：
@@ -100,6 +115,7 @@ python3 setup.py
 | 报错 | 原因和解法 |
 |------|-----------|
 | `403: access_denied` / 「developer hasn't given you access」 | 第 4 步没把自己加进 Test users。加完**重新运行** `python3 setup.py` |
+| `invalid_grant` / 同步跑了几天后突然全部失败 | 应用还停在 Testing 状态，refresh token 满 7 天失效。按第 6.5 步发布到 Production，然后重跑 `python3 google_auth.py` |
 | 「Google hasn't verified this app」 | 不是错误，见第 7 步，点 Advanced 继续 |
 | 响应里没有 refresh_token | 之前授权过同一个应用。去 <https://myaccount.google.com/permissions> 移除 calendar-sync 的授权后重来 |
 | 提示需要两步验证 | 先去 <https://myaccount.google.com/security> 开启 2SV，这是 Google Cloud 的硬性要求 |

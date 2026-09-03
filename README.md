@@ -109,6 +109,9 @@ tail -f ~/.config/calendar-sync/sync.log
 **报错 `403 access_denied`？**
 Google 那步没把自己加进 Test users。见 [docs/google-setup.md](docs/google-setup.md) 第 4 步。
 
+**跑了几天突然全部失败，报 `invalid_grant`？**
+你的 Google 应用还停在 Testing 状态——这种状态下 refresh token **满 7 天必失效**，是 Google 的硬性策略，不是 bug。解法：把应用发布到 Production（见 [docs/google-setup.md](docs/google-setup.md) 第 6.5 步），再重跑 `python3 google_auth.py`。发布不需要过审。
+
 **报错 `找不到 lark-cli`？**
 `npm i -g @larksuite/cli`，然后 `lark-cli auth login`。
 

@@ -58,6 +58,8 @@ python3 setup.py
 | 现象 | 大概率原因 |
 |------|-----------|
 | `403 access_denied` | GCP 里没把自己加进 Test users，见 docs/google-setup.md 第 4 步 |
+| `invalid_grant`（跑了 7 天后突然全挂） | GCP 应用停在 Testing 状态，refresh token 满 7 天失效。要发布到 Production，见 docs/google-setup.md 第 6.5 步 |
+| 同步悄悄停了没人发现 | 检查 `python3 sync.py --doctor` 的「健康状态」段，看最后成功同步时间 |
 | `找不到 lark-cli` | 没装或不在 PATH：`npm i -g @larksuite/cli` |
 | 飞书 API 报权限错 | 授权过期：`lark-cli auth login` |
 | 定时器不跑 | macOS 查 `launchctl list \| grep calendar-sync`；Linux 查 `crontab -l` |
