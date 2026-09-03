@@ -86,11 +86,27 @@ mkdir -p ~/.config/calendar-sync
 Google 的硬性策略：发布状态为 **Testing** 的应用，签发的 refresh token **7 天后失效**。到期后同步会一直报 `invalid_grant`，两边日历各自漂移。
 
 做法：左侧 **Audience** 页面 → 顶部 Publishing status 下点 **PUBLISH APP** → 弹窗确认。
+发布后状态变成 **In production**，refresh token 不再过期。**不需要提交 Google 审核**——审核只影响那个「未验证应用」的警告页，不影响功能。
 
-- 如果按钮点不动，说明 **Branding 页面的 App name 是空的**——先去左侧 Branding 填上应用名（比如 `calendar-sync`）并 Save，再回来发布
-- 发布后状态变成 **In production**，refresh token 不再过期
-- **不需要提交 Google 审核**。审核只影响那个「未验证应用」的警告页，不影响功能。你自己用，看到警告点 Advanced 继续即可
-- 未验证的生产应用有 100 用户上限，个人使用完全够
+### 如果 PUBLISH APP 按钮是灰的
+
+页面会提示「Your app's OAuth configuration is incomplete」。按顺序排查：
+
+1. **Branding 页面**：`App name` 和 `User support email` 两个带 `*` 的必填项都要有值
+2. **Data Access 页面**：点 `Add or remove scopes` → 在最下方「Manually add scopes」文本框粘贴
+   `https://www.googleapis.com/auth/calendar.events` → `Add to table` → 勾选 → `Update` → `Save`
+   （这一步很容易被忽略：授权能正常工作，但 scope 没在控制台登记过，就会卡住发布）
+3. **App domain**：`calendar.events` 属于敏感权限，Google 可能还要求填应用主页和隐私政策链接，
+   且域名要先加进 Authorized domains。**这一步需要你有自己的域名**
+
+### 实在发布不了怎么办
+
+如果第 3 条卡住（没有自己的域名），有两个退路：
+
+- **接受 7 天一次的重新授权**：本工具已内置失败告警，令牌一失效就会弹系统通知，
+  收到后跑一次 `python3 google_auth.py` 即可，约 1 分钟。数据不会丢——恢复后会自动补齐落下的日程
+- **如果你的组织有 Google Workspace**：用组织账号建 GCP 项目，User type 选 **Internal**。
+  内部应用没有 7 天限制、也不需要任何审核，是最干净的方案（但同步的会是组织账号的日历）
 
 ---
 
